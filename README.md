@@ -2,6 +2,8 @@
 
 **StatusTextEditor** 是一个《最终幻想 14》Dalamud 插件：**热修改游戏原生状态（buff / debuff）的名称与描述文本**，修改即时生效，仅在本机显示，不向服务器发送任何数据。
 
+**English**: A Dalamud plugin for FFXIV that hot-edits the names and descriptions of native statuses (buffs/debuffs). Changes apply instantly, are display-only, and never touch the server. The UI is bilingual (Chinese/English, auto-detected with a manual override). Pick any status from the full Status sheet, style text with `[color]` / `[glow]` / `[i]` tags, organize entries into categories, and share overrides as JSON. Install via the custom plugin repository below (Method 1), or grab `latest.zip` from [Releases](../../releases) and drop it into `devPlugins`. The UI language follows the game's sheet language automatically; switch it any time from the combo in the title bar.
+
 ## 功能
 
 - **全表选择**：内置完整 Status 表选择器，支持按名称 / ID 搜索、图标预览。
