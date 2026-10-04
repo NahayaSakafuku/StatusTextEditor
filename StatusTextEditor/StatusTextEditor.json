@@ -1,0 +1,12 @@
+{
+    "Author": "fork",
+    "Name": "StatusTextEditor",
+    "InternalName": "StatusTextEditor",
+    "Description": "热修改游戏原生状态（buff/debuff）的名称与描述文本，支持格式化标签，仅本机显示。",
+    "ApplicableVersion": "any",
+    "Punchline": "自定义原生状态文本，kupo！",
+    "RepoUrl": "https://github.com/kawaii/Moodles",
+    "AcceptsFeedback": false,
+    "DalamudApiLevel": 15,
+    "Version": "1.0.0.0"
+}
