@@ -24,7 +24,17 @@
 3. 点击右下角 **保存**；
 4. 打开 **Dalamud 插件列表**（系统菜单 → Dalamud Plugins），搜索 `StatusTextEditor` 并安装。
 
-> 国内网络如果无法访问 `raw.githubusercontent.com`，可尝试使用镜像加速前缀，或将 Release 中的 `latest.zip` 按方式二手动安装。
+**国内网络镜像**：如果 `raw.githubusercontent.com` 无法访问，可改用 jsDelivr CDN 地址（内容相同，国内可直连）：
+
+```
+https://cdn.jsdelivr.net/gh/eayu-nsyf/StatusTextEditor@main/repo.json
+```
+
+### 方式二：手动安装
+
+1. 从 [Releases](../../releases) 下载最新的 `latest.zip`（国内可直连镜像：`https://cdn.jsdelivr.net/gh/eayu-nsyf/StatusTextEditor@v1.0.0.0/dist/latest.zip`）；
+2. 解压到 `%AppData%\XIVLauncherCN\devPlugins\`（或你的启动器对应目录）下的 `StatusTextEditor` 文件夹；
+3. 重启游戏，在 `/xlplugins` 中启用。
 
 ### 方式二：手动安装
 
