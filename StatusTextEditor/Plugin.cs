@@ -13,13 +13,27 @@ public class StatusOverride
     /// <summary> 替换描述；留空保持原版。支持格式化标签（[color]/[glow]/[i]）。 </summary>
     public string Description = "";
 
+    /// <summary> 分类名；空 = 默认分类。 </summary>
+    public string Category = "";
+
     public bool IsEmpty => Name.Length == 0 && Description.Length == 0;
+}
+
+/// <summary> 导出/导入用的条目集合格式。 </summary>
+public class ExportFormat
+{
+    public int Format = 1;
+    public string Type = "StatusTextEditor.Export";
+    public List<StatusOverride> Entries = [];
 }
 
 public class Config
 {
     public bool Enabled = true;
     public List<StatusOverride> Overrides = [];
+
+    /// <summary> 记忆列表里处于折叠状态的分类。 </summary>
+    public HashSet<string> CollapsedCategories = [];
 }
 
 public class StatusTextEditorPlugin : IDalamudPlugin
@@ -28,14 +42,54 @@ public class StatusTextEditorPlugin : IDalamudPlugin
     public Config Config;
     public StatusTextPatcher Patcher;
     public StatusPicker? Picker;
+    public TransferWindow? Transfer;
+
+    /// <summary> 将拖拽条目移动到目标条目所在位置（重排序）。 </summary>
+    public void MoveEntry(uint draggedId, uint targetId)
+    {
+        if (draggedId == targetId) return;
+        var item = Config.Overrides.FirstOrDefault(x => x.StatusId == draggedId);
+        if (item == null) return;
+        Config.Overrides.Remove(item);
+        var ti = Config.Overrides.FindIndex(x => x.StatusId == targetId);
+        Config.Overrides.Insert(ti >= 0 ? ti : Config.Overrides.Count, item);
+        Save();
+    }
+
+    /// <summary> 将拖拽条目移动到目标分类的末尾。 </summary>
+    public void MoveToCategory(uint draggedId, string category)
+    {
+        var item = Config.Overrides.FirstOrDefault(x => x.StatusId == draggedId);
+        if (item == null || item.Category == category) return;
+        item.Category = category;
+        // 移到该分类现有条目之后，视觉上落在分组末尾。
+        Config.Overrides.Remove(item);
+        var insertAt = Config.Overrides.Count;
+        for (var i = Config.Overrides.Count - 1; i >= 0; i--)
+        {
+            if (Config.Overrides[i].Category == category) { insertAt = i + 1; break; }
+        }
+        Config.Overrides.Insert(insertAt, item);
+        Save();
+    }
+
+    /// <summary> 批量重命名分类。 </summary>
+    public void RenameCategory(string oldName, string newName)
+    {
+        foreach (var ov in Config.Overrides)
+            if (ov.Category == oldName)
+                ov.Category = newName;
+        Config.CollapsedCategories.Remove(oldName);
+        Save();
+    }
 
     /// <summary> 选中指定状态的覆盖条目，不存在则创建空条目。 </summary>
-    public void AddOrSelect(uint statusId)
+    public void AddOrSelect(uint statusId, string category = "")
     {
         var ov = Config.Overrides.FirstOrDefault(x => x.StatusId == statusId);
         if (ov == null)
         {
-            ov = new StatusOverride { StatusId = statusId };
+            ov = new StatusOverride { StatusId = statusId, Category = category };
             Config.Overrides.Add(ov);
             Save();
         }

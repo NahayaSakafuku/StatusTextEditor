@@ -1,3 +1,4 @@
+using Dalamud.Interface;
 using Dalamud.Interface.Colors;
 using Dalamud.Interface.Windowing;
 using Lumina.Excel.Sheets;
@@ -6,11 +7,19 @@ namespace StatusTextEditor;
 
 public static class UI
 {
-    private static string Filter = "";
+    internal static string Filter = "";
     internal static uint Selected;
+
+    private static string? RenamingCategory;   // 正在重命名的分类（null = 无）
+    private static string RenameBuffer = "";
 
     private static StatusOverride? SelectedOverride =>
         P.Config.Overrides.FirstOrDefault(x => x.StatusId == Selected);
+
+    private static IEnumerable<IGrouping<string, StatusOverride>> Grouped =>
+        P.Config.Overrides
+            .Where(MatchesFilter)
+            .GroupBy(x => x.Category);
 
     public static void Draw()
     {
@@ -27,7 +36,7 @@ public static class UI
 
         if (ImGui.BeginTable("##main", 2, ImGuiTableFlags.Resizable))
         {
-            ImGui.TableSetupColumn("##list", ImGuiTableColumnFlags.WidthFixed, 290f);
+            ImGui.TableSetupColumn("##list", ImGuiTableColumnFlags.WidthFixed, 300f);
             ImGui.TableNextColumn();
             DrawListPanel();
             ImGui.TableNextColumn();
@@ -36,34 +45,43 @@ public static class UI
         }
     }
 
+    private static bool MatchesFilter(StatusOverride x) =>
+        Filter.Length == 0
+     || x.StatusId.ToString().Contains(Filter)
+     || GetStatusName(x.StatusId).Contains(Filter, StringComparison.OrdinalIgnoreCase);
+
     private static void DrawListPanel()
     {
         ImGui.SetNextItemWidth(-1f);
         ImGui.InputTextWithHint("##filter", "筛选（名称 / ID）", ref Filter, 64);
 
-        var overrides = P.Config.Overrides
-            .Where(x => Filter.Length == 0
-                     || x.StatusId.ToString().Contains(Filter)
-                     || GetStatusName(x.StatusId).Contains(Filter, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (ImGui.BeginChild("##overrides", new(0, -ImGui.GetFrameHeightWithSpacing())))
+        if (ImGui.BeginChild("##overrides", new(0, -ImGui.GetFrameHeight() * 2 - 4f)))
         {
-            if (overrides.Count == 0)
+            if (P.Config.Overrides.Count == 0)
             {
                 ImGuiEx.Text(ImGuiColors.DalamudGrey, "暂无条目。点击下方“添加状态”从状态列表中选择。");
             }
-            foreach (var ov in overrides)
+            else if (Filter.Length > 0)
             {
-                var selected = ov.StatusId == Selected;
-                if (ThreadLoadImageHandler.TryGetIconTextureWrap(GetStatusIcon(ov.StatusId), false, out var tex))
+                // 筛选时平铺显示，不做分组折叠。
+                foreach (var ov in P.Config.Overrides.Where(MatchesFilter).ToList())
+                    DrawEntryRow(ov);
+            }
+            else
+            {
+                var index = 0;
+                foreach (var group in Grouped.ToList())
                 {
-                    ImGui.Image(tex.Handle, new(20, 20));
-                    ImGui.SameLine();
+                    DrawCategoryHeader(group.Key, group.Count(), index++);
+                    if (!P.Config.CollapsedCategories.Contains(group.Key))
+                    {
+                        ImGui.Indent(10f);
+                        foreach (var ov in group) DrawEntryRow(ov);
+                        ImGui.Unindent(10f);
+                    }
                 }
-                var name = GetStatusName(ov.StatusId);
-                if (ImGui.Selectable($"{ov.StatusId}  {name}##ov{ov.StatusId}", selected))
-                    Selected = ov.StatusId;
+                if (index == 0)
+                    ImGuiEx.Text(ImGuiColors.DalamudGrey, "没有符合筛选条件的条目。");
             }
         }
         ImGui.EndChild();
@@ -71,8 +89,11 @@ public static class UI
         if (ImGui.Button("+ 添加状态"))
             StatusPicker.Open();
         ImGui.SameLine();
+        if (ImGui.Button("导入/导出"))
+            TransferWindow.Open();
+        ImGui.SameLine();
         ImGui.BeginDisabled(Selected == 0);
-        if (ImGui.Button("删除所选"))
+        if (ImGuiEx.IconButton(FontAwesomeIcon.Trash, "delSel"))
         {
             var ov = SelectedOverride;
             if (ov != null)
@@ -83,6 +104,103 @@ public static class UI
             }
         }
         ImGui.EndDisabled();
+
+        if (ImGui.SmallButton("全部展开"))
+            P.Config.CollapsedCategories.Clear();
+        ImGui.SameLine();
+        if (ImGui.SmallButton("全部折叠"))
+        {
+            P.Config.CollapsedCategories.Clear();
+            foreach (var cat in Grouped.Select(g => g.Key))
+                P.Config.CollapsedCategories.Add(cat);
+        }
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("拖动条目可排序；拖到分组标题上可移动分类；右键分组标题可重命名分类。");
+    }
+
+    private static void DrawCategoryHeader(string category, int count, int index)
+    {
+        var display = category.Length > 0 ? category : "默认";
+        var collapsed = P.Config.CollapsedCategories.Contains(category);
+        ImGui.SetNextItemOpen(!collapsed);
+
+        if (RenamingCategory == category)
+        {
+            ImGui.SetNextItemWidth(-1f);
+            if (ImGui.InputText($"##rename{index}", ref RenameBuffer, 64, ImGuiInputTextFlags.EnterReturnsTrue))
+            {
+                var newName = RenameBuffer.Trim();
+                if (newName.Length > 0 && newName != category)
+                    P.RenameCategory(category, newName);
+                RenamingCategory = null;
+            }
+            if (ImGui.IsItemClicked(ImGuiMouseButton.Right)) RenamingCategory = null;
+            return;
+        }
+
+        var open = ImGui.CollapsingHeader($"{display} ({count})##cat{index}");
+        if (open == collapsed)
+        {
+            if (open) P.Config.CollapsedCategories.Remove(category);
+            else P.Config.CollapsedCategories.Add(category);
+            P.Save();
+        }
+
+        // 右键重命名
+        if (ImGui.IsItemClicked(ImGuiMouseButton.Right))
+            ImGui.OpenPopup($"catmenu{index}");
+        if (ImGui.BeginPopup($"catmenu{index}"))
+        {
+            if (ImGui.MenuItem("重命名分类"))
+            {
+                RenamingCategory = category;
+                RenameBuffer = display;
+            }
+            ImGui.EndPopup();
+        }
+
+        // 拖拽条目到分组标题上 = 移动到该分类
+        if (ImGui.BeginDragDropTarget())
+        {
+            if (ImGuiDragDrop.AcceptDragDropPayload<uint>("STE_OV", out var dragged))
+            {
+                if (ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+                    P.MoveToCategory(dragged, category);
+            }
+            ImGui.EndDragDropTarget();
+        }
+    }
+
+    private static void DrawEntryRow(StatusOverride ov)
+    {
+        var selected = ov.StatusId == Selected;
+        if (ThreadLoadImageHandler.TryGetIconTextureWrap(GetStatusIcon(ov.StatusId), false, out var tex))
+        {
+            ImGui.Image(tex.Handle, new(20, 20));
+            ImGui.SameLine();
+        }
+        var name = GetStatusName(ov.StatusId);
+        var label = $"{ov.StatusId}  {name}##ov{ov.StatusId}";
+        if (ImGui.Selectable(label, selected))
+            Selected = ov.StatusId;
+
+        // 拖拽源
+        if (ImGui.BeginDragDropSource())
+        {
+            ImGuiDragDrop.SetDragDropPayload("STE_OV", ov.StatusId);
+            ImGui.TextUnformatted($"{ov.StatusId}  {name}");
+            ImGui.EndDragDropSource();
+        }
+        // 拖拽目标 = 移动到该条目位置
+        if (ImGui.BeginDragDropTarget())
+        {
+            if (ImGuiDragDrop.AcceptDragDropPayload<uint>("STE_OV", out var dragged))
+            {
+                if (ImGui.IsMouseReleased(ImGuiMouseButton.Left))
+                    P.MoveEntry(dragged, ov.StatusId);
+            }
+            ImGui.EndDragDropTarget();
+        }
     }
 
     private static void DrawEditorPanel()
@@ -121,6 +239,17 @@ public static class UI
             ImGuiEx.Text($"{GetStatusName(ov.StatusId)}");
 
             ImGui.TableNextColumn();
+            ImGuiEx.TextV("分类");
+            ImGui.TableNextColumn();
+            var cat = ov.Category;
+            ImGui.SetNextItemWidth(-40f);
+            if (ImGui.InputTextWithHint("##cat", "留空 = 默认分类", ref cat, 64))
+            {
+                ov.Category = cat.Trim();
+                P.Save();
+            }
+
+            ImGui.TableNextColumn();
             ImGuiEx.TextV("名称");
             ImGui.TableNextColumn();
             var name = ov.Name;
@@ -146,7 +275,7 @@ public static class UI
                 ov.Description = desc;
                 P.Save();
             }
-            var err = BBCode.Parse(desc, out var parseError);
+            BBCode.Parse(desc, out var parseError);
             if (parseError.Length > 0)
                 ImGuiEx.Text(ImGuiColors.DalamudRed, parseError);
 
@@ -168,7 +297,7 @@ public static class UI
         }
     }
 
-    private static string GetStatusName(uint statusId)
+    internal static string GetStatusName(uint statusId)
     {
         try
         {
@@ -181,7 +310,7 @@ public static class UI
         }
     }
 
-    private static uint GetStatusIcon(uint statusId)
+    internal static uint GetStatusIcon(uint statusId)
     {
         try
         {
@@ -251,9 +380,7 @@ public class StatusPicker : Window
                     var hasOverride = P.Config.Overrides.Any(x => x.StatusId == id);
                     var label = $"{id}  {name}{(hasOverride ? "  ✔" : "")}##st{id}";
                     if (ImGui.Selectable(label, UI.Selected == id))
-                    {
                         P.AddOrSelect(id);
-                    }
                     if (hasOverride && ImGui.IsItemHovered()) ImGui.SetTooltip("该状态已存在覆盖条目，点击直接选中。");
                 }
             }
