@@ -89,8 +89,10 @@ public unsafe class StatusTextPatcher : IDisposable
         var originalDesc = ReadCString(original + descOffset);
 
         var ov = GetOverride(statusId)!;
-        var newName = ov.Name.Length > 0 ? System.Text.Encoding.UTF8.GetBytes(ov.Name) : originalName;
-        var maxNameLen = 259 - nameOffset - 1;                  // 偏移字段为单字节，沿用 Namingway 的总量上限
+        // Name goes through the BBCode parser like the description so formatting
+        // tags render in the native tooltip (the buffer is parsed as SeString).
+        var newName = ov.Name.Length > 0 ? StatusTextEditor.BBCode.Parse(ov.Name).Encode() : originalName;
+        var maxNameLen = 254 - nameOffset;                      // data[4] stores the desc offset in a single byte
         if (newName.Length > maxNameLen) Array.Resize(ref newName, maxNameLen);
 
         var newDesc = ov.Description.Length > 0 ? StatusTextEditor.BBCode.Parse(ov.Description).Encode() : originalDesc;
