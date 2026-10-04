@@ -34,7 +34,7 @@ https://cdn.jsdelivr.net/gh/NahayaSakafuku/StatusTextEditor@main/repo.json
 
 ### 方式二：手动安装
 
-1. 从 [Releases](../../releases) 下载最新的 `latest.zip`（国内可直连镜像：`https://cdn.jsdelivr.net/gh/NahayaSakafuku/StatusTextEditor@v1.0.0.0/dist/latest.zip`）；
+1. 从 [Releases](../../releases) 下载最新的 `latest.zip`（国内可直连镜像：`https://cdn.jsdelivr.net/gh/NahayaSakafuku/StatusTextEditor@main/dist/latest.zip`）；
 2. 解压到你的启动器对应目录下；
 3. 重启游戏，在 `/xlplugins` 中启用。
 
