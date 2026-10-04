@@ -32,6 +32,9 @@ public class Config
     public bool Enabled = true;
     public List<StatusOverride> Overrides = [];
 
+    /// <summary> 界面语言：0 = 自动（按游戏表语言），1 = 中文，2 = English。 </summary>
+    public int Language = 0;
+
     /// <summary> 记忆列表里处于折叠状态的分类。 </summary>
     public HashSet<string> CollapsedCategories = [];
 }

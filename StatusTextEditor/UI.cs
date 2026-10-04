@@ -1,5 +1,6 @@
 using Dalamud.Interface;
 using Dalamud.Interface.Colors;
+using Dalamud.Interface.Utility.Raii;
 using Dalamud.Interface.Windowing;
 using Lumina.Excel.Sheets;
 
@@ -24,42 +25,72 @@ public static class UI
     public static void Draw()
     {
         if (P.Config == null || P.Patcher == null) return;
+        var s = Loc.S;
 
-        ImGui.Checkbox("启用文本覆盖", ref P.Config.Enabled);
+        ImGui.Checkbox(s.EnableOverrides, ref P.Config.Enabled);
         if (ImGui.IsItemEdited()) P.Save();
         ImGui.SameLine();
-        if (P.Patcher.Active) ImGuiEx.Text(ImGuiColors.ParsedGreen, "状态行接口已挂钩");
-        else ImGuiEx.Text(ImGuiColors.DalamudRed, "未找到状态行接口签名，此客户端不可用");
+        if (P.Patcher.Active) ImGuiEx.Text(ImGuiColors.ParsedGreen, s.HookActive);
+        else ImGuiEx.Text(ImGuiColors.DalamudRed, s.HookMissing);
         ImGui.SameLine();
-        ImGuiEx.Text(ImGuiColors.DalamudGrey, "修改即时生效，仅本机显示");
+        ImGuiEx.Text(ImGuiColors.DalamudGrey, s.LocalOnly);
+
+        ImGui.SameLine();
+        DrawLanguageCombo();
+
         ImGui.Separator();
 
         if (ImGui.BeginTable("##main", 2, ImGuiTableFlags.Resizable))
         {
             ImGui.TableSetupColumn("##list", ImGuiTableColumnFlags.WidthFixed, 300f);
             ImGui.TableNextColumn();
-            DrawListPanel();
+            DrawListPanel(s);
             ImGui.TableNextColumn();
-            DrawEditorPanel();
+            DrawEditorPanel(s);
             ImGui.EndTable();
+        }
+    }
+
+    private static void DrawLanguageCombo()
+    {
+        ImGui.SetNextItemWidth(130f);
+        using var combo = ImRaii.Combo("Language / 语言", Loc.CurrentLanguageLabel());
+        if (!combo) return;
+        if (ImGui.Selectable(Loc.S.LangAuto, P.Config.Language == 0))
+        {
+            P.Config.Language = 0;
+            P.Save();
+            Loc.Invalidate();
+        }
+        if (ImGui.Selectable(Loc.S.LangChinese, P.Config.Language == 1))
+        {
+            P.Config.Language = 1;
+            P.Save();
+            Loc.Invalidate();
+        }
+        if (ImGui.Selectable(Loc.S.LangEnglish, P.Config.Language == 2))
+        {
+            P.Config.Language = 2;
+            P.Save();
+            Loc.Invalidate();
         }
     }
 
     private static bool MatchesFilter(StatusOverride x) =>
         Filter.Length == 0
      || x.StatusId.ToString().Contains(Filter)
-     || GetStatusName(x.StatusId).Contains(Filter, StringComparison.OrdinalIgnoreCase);
+     || UI.GetStatusName(x.StatusId).Contains(Filter, StringComparison.OrdinalIgnoreCase);
 
-    private static void DrawListPanel()
+    private static void DrawListPanel(Strings s)
     {
         ImGui.SetNextItemWidth(-1f);
-        ImGui.InputTextWithHint("##filter", "筛选（名称 / ID）", ref Filter, 64);
+        ImGui.InputTextWithHint("##filter", s.FilterHint, ref Filter, 64);
 
         if (ImGui.BeginChild("##overrides", new(0, -ImGui.GetFrameHeight() * 2 - 4f)))
         {
             if (P.Config.Overrides.Count == 0)
             {
-                ImGuiEx.Text(ImGuiColors.DalamudGrey, "暂无条目。点击下方“添加状态”从状态列表中选择。");
+                ImGuiEx.Text(ImGuiColors.DalamudGrey, s.NoEntries);
             }
             else if (Filter.Length > 0)
             {
@@ -72,7 +103,7 @@ public static class UI
                 var index = 0;
                 foreach (var group in Grouped.ToList())
                 {
-                    DrawCategoryHeader(group.Key, group.Count(), index++);
+                    DrawCategoryHeader(s, group.Key, group.Count(), index++);
                     if (!P.Config.CollapsedCategories.Contains(group.Key))
                     {
                         ImGui.Indent(10f);
@@ -81,15 +112,15 @@ public static class UI
                     }
                 }
                 if (index == 0)
-                    ImGuiEx.Text(ImGuiColors.DalamudGrey, "没有符合筛选条件的条目。");
+                    ImGuiEx.Text(ImGuiColors.DalamudGrey, s.NoMatches);
             }
         }
         ImGui.EndChild();
 
-        if (ImGui.Button("+ 添加状态"))
+        if (ImGui.Button(s.AddStatus))
             StatusPicker.Open();
         ImGui.SameLine();
-        if (ImGui.Button("导入/导出"))
+        if (ImGui.Button(s.ImportExport))
             TransferWindow.Open();
         ImGui.SameLine();
         ImGui.BeginDisabled(Selected == 0);
@@ -105,22 +136,22 @@ public static class UI
         }
         ImGui.EndDisabled();
 
-        if (ImGui.SmallButton("全部展开"))
+        if (ImGui.SmallButton(s.ExpandAll))
             P.Config.CollapsedCategories.Clear();
         ImGui.SameLine();
-        if (ImGui.SmallButton("全部折叠"))
+        if (ImGui.SmallButton(s.CollapseAll))
         {
             P.Config.CollapsedCategories.Clear();
             foreach (var cat in Grouped.Select(g => g.Key))
                 P.Config.CollapsedCategories.Add(cat);
         }
         if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("拖动条目可排序；拖到分组标题上可移动分类；右键分组标题可重命名分类。");
+            ImGui.SetTooltip(s.ListHint);
     }
 
-    private static void DrawCategoryHeader(string category, int count, int index)
+    private static void DrawCategoryHeader(Strings s, string category, int count, int index)
     {
-        var display = category.Length > 0 ? category : "默认";
+        var display = category.Length > 0 ? category : s.DefaultCategory;
         var collapsed = P.Config.CollapsedCategories.Contains(category);
         ImGui.SetNextItemOpen(!collapsed);
 
@@ -151,7 +182,7 @@ public static class UI
             ImGui.OpenPopup($"catmenu{index}");
         if (ImGui.BeginPopup($"catmenu{index}"))
         {
-            if (ImGui.MenuItem("重命名分类"))
+            if (ImGui.MenuItem(s.RenameCategory))
             {
                 RenamingCategory = category;
                 RenameBuffer = display;
@@ -174,12 +205,12 @@ public static class UI
     private static void DrawEntryRow(StatusOverride ov)
     {
         var selected = ov.StatusId == Selected;
-        if (ThreadLoadImageHandler.TryGetIconTextureWrap(GetStatusIcon(ov.StatusId), false, out var tex))
+        if (ThreadLoadImageHandler.TryGetIconTextureWrap(UI.GetStatusIcon(ov.StatusId), false, out var tex))
         {
             ImGui.Image(tex.Handle, new(20, 20));
             ImGui.SameLine();
         }
-        var name = GetStatusName(ov.StatusId);
+        var name = UI.GetStatusName(ov.StatusId);
         var label = $"{ov.StatusId}  {name}##ov{ov.StatusId}";
         if (ImGui.Selectable(label, selected))
             Selected = ov.StatusId;
@@ -203,12 +234,12 @@ public static class UI
         }
     }
 
-    private static void DrawEditorPanel()
+    private static void DrawEditorPanel(Strings s)
     {
         var ov = SelectedOverride;
         if (ov == null)
         {
-            ImGuiEx.Text(ImGuiColors.DalamudGrey, "从左侧选择一个条目进行编辑。");
+            ImGuiEx.Text(ImGuiColors.DalamudGrey, s.SelectToEdit);
             return;
         }
 
@@ -217,7 +248,7 @@ public static class UI
             ImGui.TableSetupColumn("##label", ImGuiTableColumnFlags.WidthFixed, 110f);
 
             ImGui.TableNextColumn();
-            ImGuiEx.TextV("状态 ID");
+            ImGuiEx.TextV(s.StatusId);
             ImGui.TableNextColumn();
             var id = (int)ov.StatusId;
             ImGui.SetNextItemWidth(120f);
@@ -226,7 +257,7 @@ public static class UI
                 var newId = (uint)Math.Max(0, id);
                 if (newId != ov.StatusId && P.Config.Overrides.Any(x => x.StatusId == newId))
                 {
-                    Notify.Error($"状态 {newId} 已存在条目。");
+                    Notify.Error(string.Format(s.DuplicateEntry, newId));
                 }
                 else
                 {
@@ -236,25 +267,25 @@ public static class UI
                 }
             }
             ImGui.SameLine();
-            ImGuiEx.Text($"{GetStatusName(ov.StatusId)}");
+            ImGuiEx.Text($"{UI.GetStatusName(ov.StatusId)}");
 
             ImGui.TableNextColumn();
-            ImGuiEx.TextV("分类");
+            ImGuiEx.TextV(s.Category);
             ImGui.TableNextColumn();
             var cat = ov.Category;
             ImGui.SetNextItemWidth(-40f);
-            if (ImGui.InputTextWithHint("##cat", "留空 = 默认分类", ref cat, 64))
+            if (ImGui.InputTextWithHint("##cat", s.CategoryHint, ref cat, 64))
             {
                 ov.Category = cat.Trim();
                 P.Save();
             }
 
             ImGui.TableNextColumn();
-            ImGuiEx.TextV("名称");
+            ImGuiEx.TextV(s.Name);
             ImGui.TableNextColumn();
             var name = ov.Name;
             ImGui.SetNextItemWidth(-40f);
-            if (ImGui.InputTextWithHint("##name", "留空保持原版", ref name, 200))
+            if (ImGui.InputTextWithHint("##name", s.NameHint, ref name, 200))
             {
                 ov.Name = name;
                 P.Save();
@@ -262,14 +293,14 @@ public static class UI
             BBCode.Parse(name, out var nameError);
             if (nameError.Length > 0)
                 ImGuiEx.Text(ImGuiColors.DalamudRed, nameError);
-            if (ThreadLoadImageHandler.TryGetIconTextureWrap(GetStatusIcon(ov.StatusId), false, out var icon))
+            if (ThreadLoadImageHandler.TryGetIconTextureWrap(UI.GetStatusIcon(ov.StatusId), false, out var icon))
             {
                 ImGui.SameLine();
                 ImGui.Image(icon.Handle, new(28, 28));
             }
 
             ImGui.TableNextColumn();
-            ImGuiEx.TextV("描述");
+            ImGuiEx.TextV(s.Description);
             ImGui.TableNextColumn();
             var desc = ov.Description;
             ImGui.SetNextItemWidth(-40f);
@@ -285,18 +316,9 @@ public static class UI
             ImGui.EndTable();
         }
 
-        if (ImGui.CollapsingHeader("格式化标签说明", ImGuiTreeNodeFlags.DefaultOpen))
+        if (ImGui.CollapsingHeader(s.FormattingHelpTitle, ImGuiTreeNodeFlags.DefaultOpen))
         {
-            ImGuiEx.TextWrapped("""
-                名称与描述均支持格式化标签（原生 tooltip 同样生效）：
-                [color=Red]…[/color]、[color=31]…[/color] - 彩色文字
-                [glow=LightBlue]…[/glow]、[glow=数值]…[/glow] - 发光文字轮廓
-                可用颜色名称：
-                WhiteNormal, White, Grey1, Grey2, Grey3, Grey4, Yellow, Black, LightYellow, Red, DarkRed,
-                Green, DarkGreen, WarmSeaBlue, Orange, LightBlue, Gold, DarkBlue, LightGreen, Pink
-                更多颜色可用 “/xldata uicolor” 指令查询数值后以 [color=数值] 使用
-                [i]…[/i] - 斜体文字
-                """);
+            ImGuiEx.TextWrapped(s.FormattingHelp);
         }
     }
 
@@ -332,7 +354,7 @@ public class StatusPicker : Window
     private string Filter = "";
     private List<(uint Id, string Name, uint Icon)> Cache = [];
 
-    public StatusPicker() : base("选择状态##ste-picker")
+    public StatusPicker() : base($"{Loc.S.PickerTitle}##ste-picker")
     {
         this.SetMinSize(420, 380);
         EzConfigGui.WindowSystem.AddWindow(this);
@@ -346,8 +368,9 @@ public class StatusPicker : Window
 
     public override void Draw()
     {
+        var s = Loc.S;
         ImGui.SetNextItemWidth(-1f);
-        ImGui.InputTextWithHint("##picker-filter", "筛选（名称 / ID）", ref Filter, 64);
+        ImGui.InputTextWithHint("##picker-filter", s.PickerFilterHint, ref Filter, 64);
 
         if (Cache.Count == 0)
         {
@@ -365,7 +388,7 @@ public class StatusPicker : Window
                      || x.Id.ToString().Contains(Filter))
             .ToList();
 
-        ImGuiEx.Text($"共 {matches.Count} 个状态（左键选择并添加覆盖）");
+        ImGuiEx.Text(string.Format(s.PickerCount, matches.Count));
         if (ImGui.BeginChild("##picker-list"))
         {
             var clipper = new ImGuiListClipper();
@@ -384,7 +407,7 @@ public class StatusPicker : Window
                     var label = $"{id}  {name}{(hasOverride ? "  ✔" : "")}##st{id}";
                     if (ImGui.Selectable(label, UI.Selected == id))
                         P.AddOrSelect(id);
-                    if (hasOverride && ImGui.IsItemHovered()) ImGui.SetTooltip("该状态已存在覆盖条目，点击直接选中。");
+                    if (hasOverride && ImGui.IsItemHovered()) ImGui.SetTooltip(s.PickerHasOverride);
                 }
             }
             clipper.End();

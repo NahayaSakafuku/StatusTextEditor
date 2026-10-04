@@ -80,16 +80,16 @@ public static partial class BBCode
             return str.Build();
 
         ParseError:
-            error = "错误：开始与结束标签不匹配。";
+            error = Loc.S.BbMismatch;
             return new SeStringBuilder().AddText(error).Build();
 
         ColorError:
-            error = "错误：颜色名称或数值无效。";
+            error = Loc.S.BbColorInvalid;
             return new SeStringBuilder().AddText(error).Build();
         }
         catch (Exception)
         {
-            error = "错误：请检查语法。";
+            error = Loc.S.BbSyntax;
             return new SeStringBuilder().AddText(error).Build();
         }
     }

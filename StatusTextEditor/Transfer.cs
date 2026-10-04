@@ -19,7 +19,7 @@ public class TransferWindow : Window
     private string ImportError = "";
     private bool ImportOverwrite;
 
-    public TransferWindow() : base("导入 / 导出##ste-transfer")
+    public TransferWindow() : base($"{Loc.S.TransferTitle}##ste-transfer")
     {
         this.SetMinSize(520, 420);
         EzConfigGui.WindowSystem.AddWindow(this);
@@ -40,16 +40,17 @@ public class TransferWindow : Window
 
     public override void Draw()
     {
+        var s = Loc.S;
         if (ImGui.BeginTabBar("##transfer-tabs"))
         {
-            if (ImGui.BeginTabItem("导出"))
+            if (ImGui.BeginTabItem(s.TabExport))
             {
-                DrawExport();
+                DrawExport(s);
                 ImGui.EndTabItem();
             }
-            if (ImGui.BeginTabItem("导入"))
+            if (ImGui.BeginTabItem(s.TabImport))
             {
-                DrawImport();
+                DrawImport(s);
                 ImGui.EndTabItem();
             }
             ImGui.EndTabBar();
@@ -58,9 +59,9 @@ public class TransferWindow : Window
 
     #region 导出
 
-    private void DrawExport()
+    private void DrawExport(Strings s)
     {
-        ImGuiEx.TextWrapped("勾选需要分发的条目，导出为 JSON 文件（或复制到剪贴板直接发给对方，对方在“导入”页粘贴即可）。分类标题上的勾选框可整类批量勾选。");
+        ImGuiEx.TextWrapped(s.ExportIntro);
         ImGui.Separator();
 
         // 选中集合与当前条目对齐：清理已删除的，打开窗口时默认全选。
@@ -73,25 +74,25 @@ public class TransferWindow : Window
             ExportSelectionDirty = false;
         }
 
-        if (ImGui.Button("全选"))
+        if (ImGui.Button(s.SelectAll))
             foreach (var ov in P.Config.Overrides)
                 ExportSelected.Add(ov.StatusId);
         ImGui.SameLine();
-        if (ImGui.Button("全不选"))
+        if (ImGui.Button(s.SelectNone))
             ExportSelected.Clear();
         ImGui.SameLine();
-        ImGuiEx.Text(ImGuiColors.DalamudGrey, $"已选 {ExportSelected.Count} / {P.Config.Overrides.Count}");
+        ImGuiEx.Text(ImGuiColors.DalamudGrey, string.Format(s.SelectedCount, ExportSelected.Count, P.Config.Overrides.Count));
 
         if (ImGui.BeginChild("##export-list", new(0, -ImGui.GetFrameHeightWithSpacing() * 2 - 4f)))
         {
             if (P.Config.Overrides.Count == 0)
             {
-                ImGuiEx.Text(ImGuiColors.DalamudGrey, "暂无条目可导出。");
+                ImGuiEx.Text(ImGuiColors.DalamudGrey, s.NothingToExport);
             }
             var gi = 0;
             foreach (var group in P.Config.Overrides.GroupBy(x => x.Category).ToList())
             {
-                var display = group.Key.Length > 0 ? group.Key : "默认";
+                var display = group.Key.Length > 0 ? group.Key : s.DefaultCategory;
                 var all = group.All(x => ExportSelected.Contains(x.StatusId));
                 var any = group.Any(x => ExportSelected.Contains(x.StatusId));
                 var cb = all;
@@ -101,7 +102,7 @@ public class TransferWindow : Window
                     else foreach (var x in group) ExportSelected.Remove(x.StatusId);
                 }
                 if (any && !all && ImGui.IsItemHovered())
-                    ImGui.SetTooltip("该分类已部分勾选，点击勾选框 = 取消整类；再点 = 全选整类。");
+                    ImGui.SetTooltip(s.PartialCategory);
                 ImGui.SameLine();
 
                 var collapsed = ExportCollapsed.Contains(group.Key);
@@ -134,21 +135,21 @@ public class TransferWindow : Window
         }
         ImGui.EndChild();
 
-        if (ImGui.Button("导出到文件…"))
+        if (ImGui.Button(s.ExportToFile))
         {
             OpenFileDialog.SelectFile(
-                ofn => new TickScheduler(() => WriteExportFile(ofn.file)),
+                ofn => new TickScheduler(() => WriteExportFile(ofn.file, s)),
                 null,
                 null,
-                "选择导出位置",
-                [("JSON 文件", new[] { "json" })],
+                s.ChooseExportLocation,
+                [(s.JsonFile, new[] { "json" })],
                 save: true);
         }
         ImGui.SameLine();
-        if (ImGui.Button("复制到剪贴板"))
+        if (ImGui.Button(s.CopyClipboard))
         {
             ImGui.SetClipboardText(BuildJson());
-            Notify.Success($"已复制 {ExportSelected.Count} 条覆盖到剪贴板。");
+            Notify.Success(string.Format(s.CopiedClipboard, ExportSelected.Count));
         }
     }
 
@@ -161,18 +162,18 @@ public class TransferWindow : Window
         return JsonSerializer.Serialize(export, new JsonSerializerOptions { WriteIndented = true, IncludeFields = true });
     }
 
-    private void WriteExportFile(string path)
+    private void WriteExportFile(string path, Strings s)
     {
         try
         {
             if (path.IsNullOrEmpty()) return;
             if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) path += ".json";
             File.WriteAllText(path, BuildJson());
-            Notify.Success($"已导出 {ExportSelected.Count} 条覆盖到 {path}");
+            Notify.Success(string.Format(s.ExportedFile, ExportSelected.Count, path));
         }
         catch (Exception e)
         {
-            Notify.Error($"导出失败: {e.Message}");
+            Notify.Error(string.Format(s.ExportFailed, e.Message));
         }
     }
 
@@ -180,12 +181,12 @@ public class TransferWindow : Window
 
     #region 导入
 
-    private void DrawImport()
+    private void DrawImport(Strings s)
     {
-        ImGuiEx.TextWrapped("粘贴他人分享的 JSON 文本，或从文件加载；选择冲突处理方式后执行导入。");
+        ImGuiEx.TextWrapped(s.ImportIntro);
         ImGui.Separator();
 
-        if (ImGui.Button("从文件加载…"))
+        if (ImGui.Button(s.LoadFromFile))
         {
             OpenFileDialog.SelectFile(
                 ofn => new TickScheduler(() =>
@@ -193,23 +194,23 @@ public class TransferWindow : Window
                     try
                     {
                         ImportText = File.ReadAllText(ofn.file);
-                        ParseImport();
+                        ParseImport(s);
                     }
                     catch (Exception e)
                     {
-                        ImportError = $"读取文件失败: {e.Message}";
+                        ImportError = string.Format(s.ReadFileFailed, e.Message);
                     }
                 }),
                 null,
                 null,
-                "选择 JSON 文件",
-                [("JSON 文件", new[] { "json" })]);
+                s.ChooseJsonFile,
+                [(s.JsonFile, new[] { "json" })]);
         }
         ImGui.SameLine();
-        if (ImGui.Button("解析剪贴板"))
+        if (ImGui.Button(s.ParseClipboard))
         {
             ImportText = ImGui.GetClipboardText();
-            ParseImport();
+            ParseImport(s);
         }
 
         var text = ImportText;
@@ -225,10 +226,10 @@ public class TransferWindow : Window
         {
             var entries = ParsedImport.Entries;
             var conflicts = entries.Count(x => P.Config.Overrides.Any(y => y.StatusId == x.StatusId));
-            ImGuiEx.Text(ImGuiColors.ParsedGreen, $"解析成功：{entries.Count} 条覆盖，其中 {conflicts} 条与现有条目冲突。");
-            ImGui.Checkbox("覆盖已存在的条目（不勾选则跳过冲突项）", ref ImportOverwrite);
+            ImGuiEx.Text(ImGuiColors.ParsedGreen, string.Format(s.ImportParsed, entries.Count, conflicts));
+            ImGui.Checkbox(s.ImportOverwriteHint, ref ImportOverwrite);
 
-            if (ImGui.Button("执行导入"))
+            if (ImGui.Button(s.ExecuteImport))
             {
                 var added = 0;
                 var overwritten = 0;
@@ -256,7 +257,7 @@ public class TransferWindow : Window
                     }
                 }
                 P.Save();
-                Notify.Success($"导入完成：新增 {added} 条，覆盖 {overwritten} 条。");
+                Notify.Success(string.Format(s.ImportDone, added, overwritten));
                 ParsedImport = null;
                 ImportText = "";
             }
@@ -267,13 +268,13 @@ public class TransferWindow : Window
         }
     }
 
-    private void ParseImport()
+    private void ParseImport(Strings s)
     {
         ImportError = "";
         ParsedImport = null;
         if (ImportText.Trim().Length == 0)
         {
-            ImportError = "内容为空。";
+            ImportError = s.ImportEmpty;
             return;
         }
         try
@@ -281,14 +282,14 @@ public class TransferWindow : Window
             var parsed = JsonSerializer.Deserialize<ExportFormat>(ImportText, new JsonSerializerOptions { IncludeFields = true });
             if (parsed?.Entries is not { Count: > 0 })
             {
-                ImportError = "未找到任何覆盖条目（Entries 为空）。";
+                ImportError = s.ImportNoEntries;
                 return;
             }
             ParsedImport = parsed;
         }
         catch (Exception e)
         {
-            ImportError = $"JSON 解析失败: {e.Message}";
+            ImportError = string.Format(s.ImportParseFailed, e.Message);
         }
     }
 
