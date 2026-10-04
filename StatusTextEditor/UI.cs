@@ -259,6 +259,9 @@ public static class UI
                 ov.Name = name;
                 P.Save();
             }
+            BBCode.Parse(name, out var nameError);
+            if (nameError.Length > 0)
+                ImGuiEx.Text(ImGuiColors.DalamudRed, nameError);
             if (ThreadLoadImageHandler.TryGetIconTextureWrap(GetStatusIcon(ov.StatusId), false, out var icon))
             {
                 ImGui.SameLine();
@@ -285,7 +288,7 @@ public static class UI
         if (ImGui.CollapsingHeader("格式化标签说明", ImGuiTreeNodeFlags.DefaultOpen))
         {
             ImGuiEx.TextWrapped("""
-                此字段支持格式化标签（原生 tooltip 同样生效）：
+                名称与描述均支持格式化标签（原生 tooltip 同样生效）：
                 [color=Red]…[/color]、[color=31]…[/color] - 彩色文字
                 [glow=LightBlue]…[/glow]、[glow=数值]…[/glow] - 发光文字轮廓
                 可用颜色名称：
