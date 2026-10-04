@@ -10,7 +10,8 @@ public class TransferWindow : Window
 {
     // 导出
     private readonly HashSet<uint> ExportSelected = [];
-    private bool ExportAll = true;
+    private readonly HashSet<string> ExportCollapsed = [];
+    private bool ExportSelectionDirty = true;   // 打开窗口时全量填充选中集合
 
     // 导入
     private string ImportText = "";
@@ -32,8 +33,7 @@ public class TransferWindow : Window
 
     public override void OnOpen()
     {
-        ExportSelected.Clear();
-        ExportAll = true;
+        ExportSelectionDirty = true;
         ImportError = "";
         ParsedImport = null;
     }
@@ -60,32 +60,76 @@ public class TransferWindow : Window
 
     private void DrawExport()
     {
-        ImGuiEx.TextWrapped("勾选需要分发的条目，导出为 JSON 文件（或复制到剪贴板直接发给对方，对方在“导入”页粘贴即可）。");
+        ImGuiEx.TextWrapped("勾选需要分发的条目，导出为 JSON 文件（或复制到剪贴板直接发给对方，对方在“导入”页粘贴即可）。分类标题上的勾选框可整类批量勾选。");
         ImGui.Separator();
 
-        if (ImGui.Button(ExportAll ? "全不选" : "全选"))
+        // 选中集合与当前条目对齐：清理已删除的，打开窗口时默认全选。
+        ExportSelected.RemoveWhere(id => !P.Config.Overrides.Any(x => x.StatusId == id));
+        if (ExportSelectionDirty)
         {
-            ExportAll = !ExportAll;
             ExportSelected.Clear();
+            foreach (var ov in P.Config.Overrides)
+                ExportSelected.Add(ov.StatusId);
+            ExportSelectionDirty = false;
         }
+
+        if (ImGui.Button("全选"))
+            foreach (var ov in P.Config.Overrides)
+                ExportSelected.Add(ov.StatusId);
         ImGui.SameLine();
-        ImGuiEx.Text(ImGuiColors.DalamudGrey, $"已选 {SelectedCount} / {P.Config.Overrides.Count}");
+        if (ImGui.Button("全不选"))
+            ExportSelected.Clear();
+        ImGui.SameLine();
+        ImGuiEx.Text(ImGuiColors.DalamudGrey, $"已选 {ExportSelected.Count} / {P.Config.Overrides.Count}");
 
         if (ImGui.BeginChild("##export-list", new(0, -ImGui.GetFrameHeightWithSpacing() * 2 - 4f)))
         {
-            foreach (var ov in P.Config.Overrides.ToList())
+            if (P.Config.Overrides.Count == 0)
             {
-                var has = ExportAll || ExportSelected.Contains(ov.StatusId);
-                var cat = ov.Category.Length > 0 ? ov.Category : "默认";
-                if (ImGui.Checkbox($"##ex{ov.StatusId}", ref has))
+                ImGuiEx.Text(ImGuiColors.DalamudGrey, "暂无条目可导出。");
+            }
+            var gi = 0;
+            foreach (var group in P.Config.Overrides.GroupBy(x => x.Category).ToList())
+            {
+                var display = group.Key.Length > 0 ? group.Key : "默认";
+                var all = group.All(x => ExportSelected.Contains(x.StatusId));
+                var any = group.Any(x => ExportSelected.Contains(x.StatusId));
+                var cb = all;
+                if (ImGui.Checkbox($"##excat{gi}", ref cb))
                 {
-                    if (has) ExportSelected.Add(ov.StatusId);
-                    else ExportSelected.Remove(ov.StatusId);
+                    if (cb) foreach (var x in group) ExportSelected.Add(x.StatusId);
+                    else foreach (var x in group) ExportSelected.Remove(x.StatusId);
                 }
+                if (any && !all && ImGui.IsItemHovered())
+                    ImGui.SetTooltip("该分类已部分勾选，点击勾选框 = 取消整类；再点 = 全选整类。");
                 ImGui.SameLine();
-                ImGuiEx.Text($"{ov.StatusId}  {UI.GetStatusName(ov.StatusId)}");
-                ImGui.SameLine();
-                ImGuiEx.Text(ImGuiColors.DalamudGrey, $"[{cat}]");
+
+                var collapsed = ExportCollapsed.Contains(group.Key);
+                ImGui.SetNextItemOpen(!collapsed);
+                var open = ImGui.CollapsingHeader($"{display} ({group.Count()})##excat-h{gi}");
+                if (open == collapsed)
+                {
+                    if (open) ExportCollapsed.Remove(group.Key);
+                    else ExportCollapsed.Add(group.Key);
+                }
+
+                if (open)
+                {
+                    ImGui.Indent(10f);
+                    foreach (var ov in group)
+                    {
+                        var has = ExportSelected.Contains(ov.StatusId);
+                        if (ImGui.Checkbox($"##ex{ov.StatusId}", ref has))
+                        {
+                            if (has) ExportSelected.Add(ov.StatusId);
+                            else ExportSelected.Remove(ov.StatusId);
+                        }
+                        ImGui.SameLine();
+                        ImGuiEx.Text($"{ov.StatusId}  {UI.GetStatusName(ov.StatusId)}");
+                    }
+                    ImGui.Unindent(10f);
+                }
+                gi++;
             }
         }
         ImGui.EndChild();
@@ -104,14 +148,12 @@ public class TransferWindow : Window
         if (ImGui.Button("复制到剪贴板"))
         {
             ImGui.SetClipboardText(BuildJson());
-            Notify.Success($"已复制 {SelectedCount} 条覆盖到剪贴板。");
+            Notify.Success($"已复制 {ExportSelected.Count} 条覆盖到剪贴板。");
         }
     }
 
-    private int SelectedCount => ExportAll ? P.Config.Overrides.Count : ExportSelected.Count;
-
     private List<StatusOverride> SelectedEntries =>
-        P.Config.Overrides.Where(x => ExportAll || ExportSelected.Contains(x.StatusId)).ToList();
+        P.Config.Overrides.Where(x => ExportSelected.Contains(x.StatusId)).ToList();
 
     private string BuildJson()
     {
@@ -126,7 +168,7 @@ public class TransferWindow : Window
             if (path.IsNullOrEmpty()) return;
             if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) path += ".json";
             File.WriteAllText(path, BuildJson());
-            Notify.Success($"已导出 {SelectedCount} 条覆盖到 {path}");
+            Notify.Success($"已导出 {ExportSelected.Count} 条覆盖到 {path}");
         }
         catch (Exception e)
         {
