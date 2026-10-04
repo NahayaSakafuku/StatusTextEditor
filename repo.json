@@ -1,0 +1,17 @@
+[
+  {
+    "Author": "eayu-nsyf",
+    "Name": "StatusTextEditor",
+    "InternalName": "StatusTextEditor",
+    "Description": "热修改游戏原生状态（buff/debuff）的名称与描述文本，支持格式化标签，仅本机显示。",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "Punchline": "自定义原生状态文本",
+    "AssemblyVersion": "1.0.0.0",
+    "RepoUrl": "https://github.com/eayu-nsyf/StatusTextEditor",
+    "DownloadLinkInstall": "https://github.com/eayu-nsyf/StatusTextEditor/releases/download/v1.0.0.0/latest.zip",
+    "DownloadLinkUpdate": "https://github.com/eayu-nsyf/StatusTextEditor/releases/download/v1.0.0.0/latest.zip",
+    "DownloadLinkTesting": "https://github.com/eayu-nsyf/StatusTextEditor/releases/download/v1.0.0.0/latest.zip",
+    "Tags": ["gui", "utility"]
+  }
+]
